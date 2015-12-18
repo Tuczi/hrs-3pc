@@ -1,0 +1,28 @@
+group 'put.highly-reliable-systems'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '1.0.0-beta-3595'
+    ext.akka_version = '2.4.1'
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: 'kotlin'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    compile "com.typesafe.akka:akka-actor_2.11:$akka_version"
+}
+
+sourceSets {
+    main.java.srcDirs += 'src/main/kotlin'
+}
