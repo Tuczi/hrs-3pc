@@ -30,43 +30,55 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
         this.timeout = timeout
     }
 
-    fun canCommit(message: Any?) {
-        if (message is StartMessage) {
+    fun checkCounter() = (++counter == size - 1)
+
+    fun timeout(): Cancellable = context.system().scheduler().scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, Abort(), context.dispatcher(), null)
+
+    fun canCommit(message: Any?): Unit = when (message) {
+        is StartMessage -> {
             println("CanCommit StartMessage")
             actors.forEach { it.tell(CanCommit(), self) }
 
             reset(timeout())
             context.become { preCommit(it) }
-        } else if (message is CanCommit) {
+        }
+
+        is Confirm -> {
+            println("CanCommit Confirm")
+            if (checkCounter())
+                timeout?.cancel()
+        }
+
+        is Abort -> {
+            println("CanCommit Abort")
+        }
+
+        is CanCommit -> {
             println("CanCommit CanCommit")
             sender.tell(Confirm(), self)
 
             reset(timeout())
             context.become { preCommit(it) }
-        } else if (message is Confirm) {
-            println("CanCommit Confirm")
-            if (++counter == size - 1)
-                timeout?.cancel()
-        } else if (message is Abort) {
-            println("CanCommit Abort")
-
         }
     }
 
-    fun preCommit(message: Any) {
-        if (message is Confirm) {
+    fun preCommit(message: Any): Unit = when (message) {
+        is Confirm -> {
             println("PreCommit Confirm")
-            if (++counter == size - 1) {
+            if (checkCounter()) {
                 timeout?.cancel()
 
                 actors.forEach { it.tell(PreCommit(), self) }
                 reset(timeout())
                 context.become { doCommit(it) }
             }
-        } else if (message is Abort) {
-            println("PreCommit Abort")
+        }
 
-        } else if (message is PreCommit) {
+        is Abort -> {
+            println("PreCommit Abort")
+        }
+
+        is PreCommit -> {
             println("PreCommit PreCommit")
             timeout?.cancel()
 
@@ -76,8 +88,9 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
         }
     }
 
-    fun doCommit(message: Any) {
-        if (message is Confirm) {
+
+    fun doCommit(message: Any): Unit = when (message) {
+        is Confirm -> {
             println("DoCommit Confirm")
             if (++counter == size - 1) {
                 timeout?.cancel()
@@ -86,10 +99,14 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
                 reset(timeout())
                 context.become { canCommit(it) }
             }
-        } else if (message is Abort) {
+        }
+
+        is Abort -> {
             println("DoCommit Abort")
 
-        } else if (message is DoCommit) {
+        }
+
+        is DoCommit -> {
             println("DoCommit DoCommit")
             timeout?.cancel()
 
@@ -97,9 +114,5 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
             reset()
             context.become { canCommit(it) }
         }
-    }
-
-    fun timeout(): Cancellable {
-        return context.system().scheduler().scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, Abort(), context.dispatcher(), null)
     }
 }
