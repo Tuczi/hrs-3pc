@@ -3,6 +3,7 @@ package put.swn.threepc
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
+import scala.util.Random
 
 
 fun main(args: Array<String>) {
@@ -15,5 +16,7 @@ fun main(args: Array<String>) {
 }
 
 fun decision(id:Int): Boolean {
-    return id == 1
+    val p = Random().nextGaussian()
+
+    return Math.abs(p) >= 0.01
 }

@@ -71,13 +71,13 @@ class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Bool
             if (decision(id)) {
                 println("Initial CanCommit (YES)")
                 sender.tell(Confirm(), self)
+                reset(timeout())
+                context.become { waiting(it) }
             } else {
                 println("Initial CanCommit (NO)")
                 sender.tell(Abort(), self)
+                context.become { aborted(it) }
             }
-
-            reset(timeout())
-            context.become { waiting(it) }
         }
     }
 
