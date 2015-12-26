@@ -13,7 +13,7 @@ fun CommitSiteActorName(number: Int): String {
     return "CommitSiteActor_$number"
 }
 
-class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
+class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Boolean = {id:Int -> true}) : UntypedActor() {
     val actors = (0..size).filter { it != id }.map { context.system().actorFor("user/" + CommitSiteActorName(it)) }
     var counter = 0
     var timeout: Cancellable? = null
@@ -68,8 +68,13 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
         }
 
         is CanCommit -> {
-            println("Initial CanCommit")
-            sender.tell(Confirm(), self)
+            if (decision(id)) {
+                println("Initial CanCommit (YES)")
+                sender.tell(Confirm(), self)
+            } else {
+                println("Initial CanCommit (NO)")
+                sender.tell(Abort(), self)
+            }
 
             reset(timeout())
             context.become { waiting(it) }
