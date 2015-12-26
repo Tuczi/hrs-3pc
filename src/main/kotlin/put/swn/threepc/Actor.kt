@@ -17,9 +17,10 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
     val actors = (0..size).filter { it != id }.map { context.system().actorFor("user/" + CommitSiteActorName(it)) }
     var counter = 0
     var timeout: Cancellable? = null
+    var isCoordinator = false
 
     init {
-        context.become { canCommit(it) }
+        context.become { initial(it) }
     }
 
     override fun onReceive(message: Any?) {
@@ -32,87 +33,135 @@ class CommitSiteActor(val id: Int, val size: Int) : UntypedActor() {
 
     fun checkCounter() = (++counter == size - 1)
 
-    fun timeout(): Cancellable = context.system().scheduler().scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, Abort(), context.dispatcher(), null)
+    fun timeout(): Cancellable = context.system().scheduler().scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, Timeout(), context.dispatcher(), null)
 
-    fun canCommit(message: Any?): Unit = when (message) {
+    fun initial(message: Any?): Unit = when (message) {
         is StartMessage -> {
-            println("CanCommit StartMessage")
+            println("Initial StartMessage")
+            isCoordinator = true
             actors.forEach { it.tell(CanCommit(), self) }
 
             reset(timeout())
-            context.become { preCommit(it) }
+            context.become { waiting(it) }
         }
 
         is Confirm -> {
-            println("CanCommit Confirm")
+            println("Initial Confirm")
             if (checkCounter())
                 timeout?.cancel()
         }
 
         is Abort -> {
-            println("CanCommit Abort")
+            println("Initial Abort")
+            timeout?.cancel()
+            if(isCoordinator)
+                actors.forEach { it.tell(Abort(), self) }
+            context.become { aborted(it) }
+        }
+
+        is Timeout -> {
+            println("Initial Abort")
+            timeout?.cancel()
+            if(isCoordinator)
+                actors.forEach { it.tell(Abort(), self) }
+            context.become { aborted(it) }
         }
 
         is CanCommit -> {
-            println("CanCommit CanCommit")
+            println("Initial CanCommit")
             sender.tell(Confirm(), self)
 
             reset(timeout())
-            context.become { preCommit(it) }
+            context.become { waiting(it) }
         }
     }
 
-    fun preCommit(message: Any): Unit = when (message) {
+    fun waiting(message: Any): Unit = when (message) {
         is Confirm -> {
-            println("PreCommit Confirm")
+            println("Waiting Confirm")
             if (checkCounter()) {
                 timeout?.cancel()
 
                 actors.forEach { it.tell(PreCommit(), self) }
                 reset(timeout())
-                context.become { doCommit(it) }
+                context.become { prepared(it) }
             }
         }
 
         is Abort -> {
-            println("PreCommit Abort")
+            println("Waiting Abort")
+            timeout?.cancel()
+            if(isCoordinator) {
+                actors.forEach { it.tell(Abort(), self) }
+            }
+            context.become { aborted(it) }
+        }
+
+        is Timeout -> {
+            println("Waiting Timeout")
+            timeout?.cancel()
+            if(isCoordinator) {
+                actors.forEach { it.tell(Abort(), self) }
+            }
+            context.become { aborted(it) }
         }
 
         is PreCommit -> {
-            println("PreCommit PreCommit")
+            println("Waiting PreCommit")
             timeout?.cancel()
 
             sender.tell(Confirm(), self)
             reset(timeout())
-            context.become { doCommit(it) }
+            context.become { prepared(it) }
         }
     }
 
 
-    fun doCommit(message: Any): Unit = when (message) {
+    fun prepared(message: Any): Unit = when (message) {
         is Confirm -> {
-            println("DoCommit Confirm")
+            println("Prepared Confirm")
             if (++counter == size - 1) {
                 timeout?.cancel()
 
                 actors.forEach { it.tell(DoCommit(), self) }
                 reset(timeout())
-                context.become { canCommit(it) }
+                context.become { commited(it) }
             }
         }
 
         is Abort -> {
-            println("DoCommit Abort")
+            println("Prepared Abort")
+            timeout?.cancel()
+            if(isCoordinator) {
+                actors.forEach { it.tell(Abort(), self) }
+            }
+            context.become { aborted(it) }
+        }
+
+        is Timeout -> {
+            println("Prepared Timeout")
+            timeout?.cancel()
+            if(isCoordinator) {
+                actors.forEach { it.tell(Abort(), self) }
+                context.become { aborted(it) }
+            } else {
+                context.become { commited(it) }
+            }
 
         }
 
         is DoCommit -> {
-            println("DoCommit DoCommit")
+            println("Prepared DoCommit")
             timeout?.cancel()
 
             sender.tell(Confirm(), self);
             reset()
-            context.become { canCommit(it) }
+            context.become { commited(it) }
         }
     }
+
+    fun commited(message: Any) = println("Commited")
+
+    fun aborted(message: Any) = println("Aborted")
+
 }
