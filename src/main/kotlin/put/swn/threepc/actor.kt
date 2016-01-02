@@ -1,6 +1,7 @@
 package put.swn.threepc
 
 
+import akka.actor.ActorRef
 import akka.actor.Cancellable
 import akka.actor.UntypedActor
 import scala.concurrent.duration.Duration
@@ -13,7 +14,7 @@ fun CommitSiteActorName(number: Int): String {
     return "CommitSiteActor_$number"
 }
 
-class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Boolean = {id:Int -> true}) : UntypedActor() {
+class CommitSiteActor(val id: Int, val size: Int, val parentActor: ActorRef, val decision: (id: Int) -> Boolean = { id: Int -> true }) : UntypedActor() {
     val actors = (0..size).filter { it != id }.map { context.system().actorFor("user/" + CommitSiteActorName(it)) }
     var counter = 0
     var timeout: Cancellable? = null
@@ -54,16 +55,18 @@ class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Bool
         is Abort -> {
             println("Initial Abort")
             timeout?.cancel()
-            if(isCoordinator)
+            if (isCoordinator)
                 actors.forEach { it.tell(Abort(), self) }
+            parentActor.tell(Abort(), self)
             context.become { aborted(it) }
         }
 
         is Timeout -> {
             println("Initial Abort")
             timeout?.cancel()
-            if(isCoordinator)
+            if (isCoordinator)
                 actors.forEach { it.tell(Abort(), self) }
+            parentActor.tell(Abort(), self)
             context.become { aborted(it) }
         }
 
@@ -96,18 +99,20 @@ class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Bool
         is Abort -> {
             println("Waiting Abort")
             timeout?.cancel()
-            if(isCoordinator) {
+            if (isCoordinator) {
                 actors.forEach { it.tell(Abort(), self) }
             }
+            parentActor.tell(Abort(), self)
             context.become { aborted(it) }
         }
 
         is Timeout -> {
             println("Waiting Timeout")
             timeout?.cancel()
-            if(isCoordinator) {
+            if (isCoordinator) {
                 actors.forEach { it.tell(Abort(), self) }
             }
+            parentActor.tell(Abort(), self)
             context.become { aborted(it) }
         }
 
@@ -130,6 +135,7 @@ class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Bool
 
                 actors.forEach { it.tell(DoCommit(), self) }
                 reset(timeout())
+                parentActor.tell(Confirm(), self)
                 context.become { commited(it) }
             }
         }
@@ -137,19 +143,22 @@ class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Bool
         is Abort -> {
             println("Prepared Abort")
             timeout?.cancel()
-            if(isCoordinator) {
+            if (isCoordinator) {
                 actors.forEach { it.tell(Abort(), self) }
             }
+            parentActor.tell(Abort(), self)
             context.become { aborted(it) }
         }
 
         is Timeout -> {
             println("Prepared Timeout")
             timeout?.cancel()
-            if(isCoordinator) {
+            if (isCoordinator) {
                 actors.forEach { it.tell(Abort(), self) }
+                parentActor.tell(Abort(), self)
                 context.become { aborted(it) }
             } else {
+                parentActor.tell(Confirm(), self)
                 context.become { commited(it) }
             }
 
@@ -161,6 +170,7 @@ class CommitSiteActor(val id: Int, val size: Int, val decision: (id:Int) -> Bool
 
             sender.tell(Confirm(), self);
             reset()
+            parentActor.tell(Confirm(), self)
             context.become { commited(it) }
         }
     }
